@@ -1,0 +1,72 @@
+.signup, .login, .home-header {
+  text-align: center;
+}
+
+.home-content,.file-content{
+  margin-left: 38%;
+}
+
+.file-details{
+  margin-left: 20px;
+  height: 40px;
+  width: inherit;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-radius: 10px;
+  border: 1px solid black;
+  font-size: 18px;
+  margin-top: 30px;
+}
+
+.select-area{
+  margin-left: 100px;
+}
+
+input[type=file]{
+  outline: none;
+  height: 80px;
+  margin-top: 20px;
+  margin-left: 60px;
+  cursor: hand;
+}
+
+.share-doc-btn{
+  height:30px;
+  width: inherit;
+  font-size:18px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin-left:80px;
+  border-radius: 10px;
+  border: 1px solid black;
+}
+
+.signup input{
+  height: 40px;
+  width: 250px;
+  margin-top: 20px;
+  border-radius: 20px;
+  border: 2px solid grey;
+  padding-left: 5px;
+  padding-right: 5px;
+  font-size: 16px;
+  outline: none
+}
+
+select {
+  height:40px;
+  width: inherit;
+  padding-left:10px;
+  padding-right:10px;
+  border-radius: 10px;
+  outline: none;
+  font-size: 20px;
+  margin-top: 15px;
+}
+
+#login-btn{
+  margin-top: 20px;
+  height:30px;
+  width: 100px;
+  font-size:20px;
+}
