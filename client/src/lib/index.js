@@ -3,21 +3,21 @@ const e2e = require('./e2e-encrypt.js')
 const wallet = require('wallet-besu')
 const getWeb3 = require('../getWeb3.js')
 const fileDownload = require('js-file-download')
+const Web3 = require('web3')
 
-let web3, id, deployedNetwork, contract,addresses
+let web3, id, deployedNetwork, contract,accounts,fromUser
 
-//let selectUser
 const init = async function() {
     console.log("Deploying contract")
-    web3 = await getWeb3.default()
+    //web3 = await getWeb3.default()
+    web3 = new Web3("http://127.0.0.1:8545")
+    accounts = await web3.eth.getAccounts()
+    fromUser = accounts[0]
     id = await web3.eth.net.getId()
     deployedNetwork = MasterContract.networks[id]
     contract = new web3.eth.Contract(
-        MasterContract.abi,
-         deployedNetwork.address
+        MasterContract.abi, deployedNetwork.address
     )
-    addresses = await web3.eth.getAccounts()
-    console.log("addresses: ", addresses)
     console.log("Contract deployed.")
 }
 
@@ -26,7 +26,7 @@ const registerUser = async function(name,email){
         const receipt = await contract.methods.registerUser(
             name, email
         ).send({
-            from: addresses[0],
+            from: fromUser,
             gas: 300000
         })
 
@@ -52,9 +52,8 @@ const loginUser = async function(privateKey){
     try {
         let publicKey = e2e.getPublicKey(privateKey)
         publicKey = publicKey.toString("hex")
-        console.log("publicKey:", publicKey)
         await contract.methods.updatePublicKey(publicKey).send({
-            from: addresses[0],
+            from: fromUser,
             gas: 3000000
         })
         return true
@@ -64,21 +63,25 @@ const loginUser = async function(privateKey){
 }
 
 const getAllUsers = async function(loggedUser){
-    const registeredUsers = await contract.methods.getAllUsers().call()
+    const registeredUsers = await contract.methods.getAllUsers().call({
+        from: fromUser
+    })
     let caller
     let userArray = []
     for (let i = 0; i < registeredUsers.length; i++){
-        const result = await contract.methods.storeUser(registeredUsers[i]).call();
+        const result = await contract.methods.storeUser(registeredUsers[i]).call({
+            from: fromUser
+        });
         if (loggedUser.toLowerCase()!==registeredUsers[i].toLowerCase()) {
             const value = {
-                address: result.userAddress,
+                address: registeredUsers[i],
                 name: result.name,
                 key: result.publicKey,
             }
             userArray.push(value)
         }else{
             caller ={
-                address: result.userAddress,
+                address: registeredUsers[i],
                 name: result.name,
                 key: result.publicKey,
             }
@@ -108,14 +111,13 @@ const uploadFile = async function(party,file){
         const fileHash = e2e.calculateHash(fileInput)
 
         for (let i=0;i<party.length;i++){
-            const aesEncKey = await e2e.encryptKey(Buffer.from(party[i].key,"hex"), cipherKey)
-            const storeKey = {
+            let aesEncKey = await e2e.encryptKey(Buffer.from(party[i].key,"hex"), cipherKey)
+            let storeKey = {
                 iv: aesEncKey.iv.toString("hex"),
                 ephemPublicKey: aesEncKey.ephemPublicKey.toString("hex"),
                 ciphertext: aesEncKey.ciphertext.toString("hex"),
                 mac: aesEncKey.mac.toString("hex")
             }
-            console.log("aesEncKey:",storeKey)
             encryptedKeys.push(JSON.stringify(storeKey))
             userAddress.push(party[i].address)
         }
@@ -128,7 +130,7 @@ const uploadFile = async function(party,file){
             encryptedKeys,
             userAddress
         ).send({
-            from: addresses[0],
+            from: fromUser,
             gas:3000000
         })
     }
@@ -136,23 +138,27 @@ const uploadFile = async function(party,file){
 
 const getAllFile = async function(){
     return await contract.methods.getAllDocIndex().call({
-        from: addresses[0]
+        from: fromUser
     })
 }
 
 const downloadFile = async function (docIndex){
 
-    let cipherKey = await contract.methods.getCipherKey(docIndex).call()
+    let cipherKey = await contract.methods.getCipherKey(docIndex).call({
+        from: fromUser
+    })
     cipherKey = JSON.parse(cipherKey)
-    const document = await contract.methods.getDocument(docIndex).call()
-    const encryptedKey = {
+    const document = await contract.methods.getDocument(docIndex).call({
+        from: fromUser
+    })
+    let encryptedKey = {
         iv: Buffer.from(cipherKey.iv,"hex"),
         ephemPublicKey: Buffer.from(cipherKey.ephemPublicKey,"hex"),
         ciphertext: Buffer.from(cipherKey.ciphertext,"hex"),
         mac: Buffer.from(cipherKey.mac,"hex")
     }
-    console.log("encryptedKey:",encryptedKey)
-    const privateKey = await wallet.login("password");
+    //console.log("encryptedKey:",encryptedKey)
+    const privateKey = await wallet.login("pass");
     const decryptedKey = await e2e.decryptKey(privateKey[0],encryptedKey)
     // get the file from aws
     // let encryptedData
