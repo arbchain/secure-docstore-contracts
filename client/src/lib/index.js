@@ -9,22 +9,24 @@ let web3, id, deployedNetwork, contract,accounts,fromUser
 
 const init = async function() {
     console.log("Deploying contract")
-    //web3 = await getWeb3.default()
-    web3 = new Web3("http://127.0.0.1:8545")
+    web3 = await getWeb3.default()
     accounts = await web3.eth.getAccounts()
     fromUser = accounts[0]
+    console.log(accounts)
     id = await web3.eth.net.getId()
     deployedNetwork = MasterContract.networks[id]
     contract = new web3.eth.Contract(
         MasterContract.abi, deployedNetwork.address
     )
-    console.log("Contract deployed.")
+    return fromUser
 }
 
-const registerUser = async function(name,email){
+const registerUser = async function(name, email, privateKey){
     try {
+        let publicKey = e2e.getPublicKey(privateKey)
+        publicKey = publicKey.toString("hex")
         const receipt = await contract.methods.registerUser(
-            name, email
+            name, email, publicKey
         ).send({
             from: fromUser,
             gas: 300000
@@ -38,13 +40,11 @@ const registerUser = async function(name,email){
     }
 }
 
-const createWallet = async function(){
-    const password = prompt("Enter password for creating wallet!:")
+const createWallet = async function(password){
     return await wallet.create(password,"orion key1")
 }
 
-const getAllAccounts = async function(){
-    const password = prompt("Enter password while wallet creation!:")
+const getAllAccounts = async function(password){
     return await wallet.login(password)
 }
 
@@ -94,12 +94,11 @@ const getAllUsers = async function(loggedUser){
     return userDetails
 }
 
-const uploadFile = async function(party,file){
+const uploadFile = async function(party, file, password, setSubmitting){
 
     console.log("party:",party)
     let encryptedKeys=[]
     let userAddress=[]
-    const password = prompt("Enter password to encrypt file!")
     const cipherKey = await e2e.generateCipherKey(password)
 
     let reader = new FileReader()
@@ -123,7 +122,7 @@ const uploadFile = async function(party,file){
         }
 
         //Save the encrypted file to AWS
-        await contract.methods.uploadDocument(
+        return await contract.methods.uploadDocument(
             42,
             fileHash.toString("hex"),
             'File location',
@@ -132,7 +131,7 @@ const uploadFile = async function(party,file){
         ).send({
             from: fromUser,
             gas:3000000
-        })
+        }).then((receipt)=>{setSubmitting(false)})
     }
 }
 
@@ -158,7 +157,7 @@ const downloadFile = async function (docIndex){
         mac: Buffer.from(cipherKey.mac,"hex")
     }
     //console.log("encryptedKey:",encryptedKey)
-    const privateKey = await wallet.login("pass");
+    const privateKey = await wallet.login("alice");
     const decryptedKey = await e2e.decryptKey(privateKey[0],encryptedKey)
     // get the file from aws
     // let encryptedData
