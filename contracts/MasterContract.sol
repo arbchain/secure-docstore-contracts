@@ -35,12 +35,14 @@ contract MasterContract {
      */
     function registerUser(
         string memory userName,
-        string memory userEmail
+        string memory userEmail,
+        string memory publicKey
     ) public{
         require(!storeUser[msg.sender].status, "Should not be registered before!");
 
         storeUser[msg.sender].name = userName;
         storeUser[msg.sender].email = userEmail;
+        storeUser[msg.sender].publicKey = publicKey;
         storeUser[msg.sender].status = true;
         registeredUsers.push(msg.sender);
     }
