@@ -6,25 +6,7 @@ import elliot from '../images/elliot.jpg'
 
 const index = require('../lib/index.js')
 
-const friendOptions = [
-  {
-    key: 'Jenny Hess',
-    text: 'Jenny Hess',
-    value: 'Jenny Hess',
-    image: { avatar: true, src: jenny },
-  },
-  {
-    key: 'Elliot Fu',
-    text: 'Elliot Fu',
-    value: 'Elliot Fu',
-    image: { avatar: true, src: elliot },
-  },
-
-]
-
 export default function Dashboard() {
-
-    
 
     const password = localStorage.getItem('password')
 
@@ -50,9 +32,9 @@ export default function Dashboard() {
                 setUsers(result.userArray)
                 setCaller(result.caller)
             }
-        })       
+        })
 
-         })       
+         })
 
     }, [] )
 
@@ -88,7 +70,7 @@ return (
         value: user.address,
         image: { avatar: true, src: jenny },
       }
-)   
+)
 
         })}
         onChange={(event, data)=> setDestUser(data.value)}
@@ -98,7 +80,7 @@ return (
       <Icon name={`file ${fileTypes[file.type]} outline`} />
     {file.type ? file.name : 'Select a file to share' }.
     </Header>
-    
+
     <Button type="file" primary style={{margin: '4rem'}}  onClick={() => fileInputRef.current.click()}>
         Select Document<input ref={fileInputRef} type="file" hidden onChange={(event)=> {selectFile(event.target.files[0])}}></input>
     </Button>

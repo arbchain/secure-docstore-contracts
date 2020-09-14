@@ -86,7 +86,7 @@ const encryptFile = function(file,cipherKey){
         const cipher = crypto.createCipheriv('aes256', cipherKey, iv);
         const encryptedData= Buffer.concat([
             iv,
-            cipher.update(Buffer.from(file.toString())),
+            cipher.update(file),
             cipher.final()
         ]);
 

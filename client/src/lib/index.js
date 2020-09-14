@@ -1,3 +1,4 @@
+const AWS = require('aws-sdk')
 const MasterContract = require('../contracts/MasterContract.json')
 const e2e = require('./e2e-encrypt.js')
 const wallet = require('wallet-besu')
@@ -7,12 +8,18 @@ const Web3 = require('web3')
 
 let web3, id, deployedNetwork, contract,accounts,fromUser
 
+AWS.config.update({
+    region: 'ap-south-1',
+    accessKeyId: 'AKIAWRATGLMSHIMUKP6H',
+    secretAccessKey: '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'
+})
+let s3 = new AWS.S3();
+
 const init = async function() {
-    console.log("Deploying contract")
+
     web3 = await getWeb3.default()
     accounts = await web3.eth.getAccounts()
     fromUser = accounts[0]
-    console.log(accounts)
     id = await web3.eth.net.getId()
     deployedNetwork = MasterContract.networks[id]
     contract = new web3.eth.Contract(
@@ -94,19 +101,51 @@ const getAllUsers = async function(loggedUser){
     return userDetails
 }
 
+const storeFileAWS = function (awsKey, encryptedData){
+    return new Promise((resolve,reject) =>{
+        s3.putObject({
+            Bucket: 'secure-doc-test',
+            Key: awsKey,
+            Body: encryptedData
+        }, function (error, data) {
+            if (error != null) {
+                reject(false)
+            } else {
+                resolve(true)
+            }
+        })
+    })
+}
+
+const getFileAWS = function (key){
+    return new Promise((resolve,reject) =>{
+        s3.getObject({
+            Bucket: 'secure-doc-test',
+            Key: key
+        },function(error, data){
+            if (error != null) {
+                reject(error)
+            } else {
+                resolve(data.Body)
+            }
+        })
+    })
+}
+
 const uploadFile = async function(party, file, password, setSubmitting){
 
-    console.log("party:",party)
     let encryptedKeys=[]
     let userAddress=[]
     const cipherKey = await e2e.generateCipherKey(password)
-
+    const fileSplit = file.name.split(".")
+    const fileFormat = fileSplit[fileSplit.length - 1]
     let reader = new FileReader()
     reader.readAsArrayBuffer(file)
 
     reader.onload = async (val) => {
-        const fileInput = val.target.result
-        const encryptFile = await e2e.encryptFile(fileInput,cipherKey)
+        const fileInput = new Uint8Array(val.target.result)
+        const encryptedFile = await e2e.encryptFile(Buffer.from(fileInput), cipherKey)
+
         const fileHash = e2e.calculateHash(fileInput)
 
         for (let i=0;i<party.length;i++){
@@ -120,18 +159,23 @@ const uploadFile = async function(party, file, password, setSubmitting){
             encryptedKeys.push(JSON.stringify(storeKey))
             userAddress.push(party[i].address)
         }
+        const awsFileKey = fileHash.toString("hex").concat(".").concat(fileFormat)
 
-        //Save the encrypted file to AWS
-        return await contract.methods.uploadDocument(
-            42,
-            fileHash.toString("hex"),
-            'File location',
-            encryptedKeys,
-            userAddress
-        ).send({
-            from: fromUser,
-            gas:3000000
-        }).then((receipt)=>{setSubmitting(false)})
+        storeFileAWS(awsFileKey, encryptedFile).then(()=>{
+            contract.methods.uploadDocument(
+                42,
+                fileHash.toString("hex"),
+                awsFileKey,
+                encryptedKeys,
+                userAddress
+            ).send({
+                from: fromUser,
+                gas:3000000
+            }).then((receipt)=>{setSubmitting(false)})
+        }).catch((err)=>{
+            console.log("ERROR: ",err)
+        })
+
     }
 }
 
@@ -141,7 +185,7 @@ const getAllFile = async function(){
     })
 }
 
-const downloadFile = async function (docIndex){
+const downloadFile = async function (docIndex,password){
 
     let cipherKey = await contract.methods.getCipherKey(docIndex).call({
         from: fromUser
@@ -156,15 +200,25 @@ const downloadFile = async function (docIndex){
         ciphertext: Buffer.from(cipherKey.ciphertext,"hex"),
         mac: Buffer.from(cipherKey.mac,"hex")
     }
-    //console.log("encryptedKey:",encryptedKey)
-    const privateKey = await wallet.login("alice");
+
+    const privateKey = await wallet.login(password);
     const decryptedKey = await e2e.decryptKey(privateKey[0],encryptedKey)
-    // get the file from aws
-    // let encryptedData
-    // const decryptedFile = await e2e.decryptFile(encryptedData,decryptedKey)
-    // download the file
-    //fileDownload(decryptedFile.toString(),"result.txt")
-    return decryptedKey
+    const documentHash = document.documentHash
+    const documentLocation = document.documentLocation
+
+    const fileSplit= documentLocation.split(".")
+    const fileFormat = fileSplit[fileSplit.length - 1]
+
+    return new Promise((resolve)=>{
+        getFileAWS(documentLocation).then((encryptedFile) =>{
+            e2e.decryptFile(encryptedFile, decryptedKey).then((decryptedFile)=>{
+                const hash2 = e2e.calculateHash(new  Uint8Array(decryptedFile)).toString("hex")
+                fileDownload(decryptedFile,"res2".concat(".").concat(fileFormat))
+                resolve(true)
+            })
+        })
+    })
+
 }
 
 module.exports ={
