@@ -5,29 +5,29 @@ const index = require('../lib/index.js')
 
 export default function Documents() {
 
-    const password = localStorage.getItem('password')
+    const identity = localStorage.getItem('identity')
     const [docs, setDocs] = useState([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
         index.init().then(() => {
-            index.getAllFile().then(
-                (files) => {
+            index.initializeMailBox(identity).then((user)=>{
+                index.getAllFiles(user,identity).then((files) => {
                     setDocs(files)
                     setLoading(false)
-                }
-            )
+                })
+            })
         })
 
     }, [])
 
-    const downloadFile = (docIndex)=>{
-        console.log('Downloading:',docs[docIndex])
-        index.downloadFile(docs[docIndex],password).then((result)=>{
+    const downloadFile = (document)=>{
+        console.log('Downloading:',document)
+        index.downloadFile(document,identity).then((result)=>{
             if(result)
-                alert("File downloaded!")
+                console.log("File downloaded!")
             else
-                alert("Some error occurred!")
+                console.log("Some error occurred!")
         })
     }
 
@@ -42,15 +42,15 @@ export default function Documents() {
             <Table.Body>
                 {
                     !loading ?
-                        docs.map((index) => {
+                        docs.map((value) => {
                             return (
                                 <Table.Row>
                                     <Table.Cell collapsing>
-                                        <Icon name='file outline'/> Document {index}
+                                        <Icon name='file outline'/> Document
                                     </Table.Cell>
                                     <Table.Cell>10 hours ago</Table.Cell>
                                     <Table.Cell collapsing textAlign='right'>
-                                        <Button icon='download' onClick={()=>downloadFile(index)}/>
+                                        <Button icon='download' onClick={()=>downloadFile(value)}/>
                                     </Table.Cell>
                                 </Table.Row>
                             )}
