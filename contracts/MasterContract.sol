@@ -8,13 +8,12 @@ contract MasterContract {
         string email;
         bool status;
         string publicKey;
-        uint256[] docIndex;
+        bytes32[] documentHash;
     }
 
     struct Document{
-        uint256 caseId;
         string documentLocation;
-        string documentHash;
+        bytes32 documentHash;
         string[] key;
         address[] users;
     }
@@ -25,8 +24,8 @@ contract MasterContract {
     // array to store registered users address
     address[] registeredUsers;
 
-    // array to store all document
-    Document[] storeDocument;
+    //mapping of docHash
+    mapping(bytes32 => Document) storeDocument;
 
     /**
      * @dev Register User
@@ -57,7 +56,6 @@ contract MasterContract {
 
     /**
      * @dev Upload document
-     * @param caseId: Case Id
      * @param documentHash: doc Hash
      * @param documentLocation: doc location
      * @param key: Array to hold AesEnc Key for party's involved in document exchange
@@ -69,14 +67,12 @@ contract MasterContract {
      * the index where current document is stored
      */
     function uploadDocument(
-        uint256 caseId,
-        string memory documentHash,
+        bytes32 documentHash,
         string memory documentLocation,
         string[] memory key,
         address[] memory users
     ) public {
         Document memory newDoc = Document({
-            caseId: caseId,
             documentLocation: documentLocation,
             documentHash: documentHash,
             key: key,
@@ -84,32 +80,21 @@ contract MasterContract {
         });
 
         for(uint256 i=0;i<users.length;i++){
-            storeUser[users[i]].docIndex.push(storeDocument.length);
+            storeUser[users[i]].documentHash.push(documentHash);
         }
-
-        storeDocument.push(newDoc);
+        storeDocument[documentHash] = newDoc;
     }
 
     /**
-     * @param index: document index
+     * @param documentHash: document hash
      * @return Document object
      */
-    function getDocument(uint256 index) public view returns(Document memory document){
-        return storeDocument[index];
+    function getDocument(bytes32 documentHash) public view returns(Document memory document){
+        return storeDocument[documentHash];
     }
 
-    /**
-     * @return all document index
-     */
-    function getAllDocIndex() public view returns(uint256[] memory docIndex){
-        return storeUser[msg.sender].docIndex;
-    }
-
-    /**
-     * @return total document
-     */
-    function getTotalDocuments() public view returns(uint256){
-        return storeDocument.length;
+    function getAllDocument() public view returns(bytes32[] memory docHash){
+        return storeUser[msg.sender].documentHash;
     }
 
     /**
@@ -121,11 +106,11 @@ contract MasterContract {
     }
 
     /**
-     * @param docIndex: Document Index
+     * @param docHash: Document Hash
      * @return AesEncKey for a particular document
      */
-    function getCipherKey(uint256 docIndex)public view returns(string memory cipherKey){
-        Document memory document = storeDocument[docIndex];
+    function getCipherKey(bytes32 docHash)public view returns(string memory cipherKey){
+        Document memory document = storeDocument[docHash];
         uint256 index;
         for (uint256 i = 0;i<document.users.length;i++){
             if(document.users[i]==msg.sender){
