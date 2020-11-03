@@ -21,9 +21,9 @@ export default function Documents() {
 
     }, [])
 
-    const downloadFile = (docIndex)=>{
-        console.log('Downloading:',docs[docIndex])
-        index.downloadFile(docs[docIndex],password).then((result)=>{
+    const downloadFile = (docHash)=>{
+        console.log('Downloading:',docHash)
+        index.downloadFile(docHash,password).then((result)=>{
             if(result)
                 alert("File downloaded!")
             else
@@ -42,15 +42,15 @@ export default function Documents() {
             <Table.Body>
                 {
                     !loading ?
-                        docs.map((index) => {
+                        docs.map((value) => {
                             return (
                                 <Table.Row>
                                     <Table.Cell collapsing>
-                                        <Icon name='file outline'/> Document {index}
+                                        <Icon name='file outline'/> Document {value}
                                     </Table.Cell>
                                     <Table.Cell>10 hours ago</Table.Cell>
                                     <Table.Cell collapsing textAlign='right'>
-                                        <Button icon='download' onClick={()=>downloadFile(index)}/>
+                                        <Button icon='download' onClick={()=>downloadFile(value)}/>
                                     </Table.Cell>
                                 </Table.Row>
                             )}

@@ -163,8 +163,7 @@ const uploadFile = async function(party, file, password, setSubmitting){
 
         storeFileAWS(awsFileKey, encryptedFile).then(()=>{
             contract.methods.uploadDocument(
-                42,
-                fileHash.toString("hex"),
+                fileHash,
                 awsFileKey,
                 encryptedKeys,
                 userAddress
@@ -180,18 +179,18 @@ const uploadFile = async function(party, file, password, setSubmitting){
 }
 
 const getAllFile = async function(){
-    return await contract.methods.getAllDocIndex().call({
+    return await contract.methods.getAllDocument().call({
         from: fromUser
     })
 }
 
-const downloadFile = async function (docIndex,password){
+const downloadFile = async function (docHash,password){
 
-    let cipherKey = await contract.methods.getCipherKey(docIndex).call({
+    let cipherKey = await contract.methods.getCipherKey(docHash).call({
         from: fromUser
     })
     cipherKey = JSON.parse(cipherKey)
-    const document = await contract.methods.getDocument(docIndex).call({
+    const document = await contract.methods.getDocument(docHash).call({
         from: fromUser
     })
     let encryptedKey = {

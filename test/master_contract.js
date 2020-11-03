@@ -1,4 +1,5 @@
 const MasterContract = artifacts.require('./MasterContract.sol')
+// const web3 = require('web3')
 
 contract("MasterContract",  (accounts) => {
     let contractInstance=null
@@ -53,8 +54,7 @@ contract("MasterContract",  (accounts) => {
 
     it('Should share document between PartyA and PartyB', async() => {
         const document = await contractInstance.uploadDocument(
-            42,
-            "doc Hash",
+            web3.utils.fromAscii("doc Hash"),
             "doc location",
             ["AesEncKeyPartyA","AesEncKeyPartyB"],
             [accounts[1],accounts[2]],{
@@ -63,24 +63,16 @@ contract("MasterContract",  (accounts) => {
         assert.equal(true, document.receipt.status)
     });
 
-    it('Should get all document for PartyA', async() => {
-        const document = await contractInstance.getAllDocIndex({
-            from:accounts[1]
-        })
-        assert.equal(1, document.length)
-    });
-
     it('Should get specific document', async() => {
-        const document = await contractInstance.getDocument(0)
+        const document = await contractInstance.getDocument(web3.utils.fromAscii("doc Hash"))
         assert.equal(2, document.users.length)
         assert.equal(2, document.key.length)
-        assert.equal(42, document.caseId)
         assert.equal('doc location', document.documentLocation)
-        assert.equal('doc Hash', document.documentHash)
+        assert.equal('0x646f632048617368000000000000000000000000000000000000000000000000', document.documentHash)
     });
 
     it('Should get AesEncKey for PartyA for document 0', async () => {
-        const cipherKey = await contractInstance.getCipherKey(0,{
+        const cipherKey = await contractInstance.getCipherKey(web3.utils.fromAscii("doc Hash"),{
             from:accounts[1]
         })
         assert.equal('AesEncKeyPartyA', cipherKey)
