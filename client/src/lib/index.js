@@ -1,231 +1,205 @@
-const AWS = require('aws-sdk')
-const MasterContract = require('../contracts/MasterContract.json')
 const e2e = require('./e2e-encrypt.js')
-const wallet = require('wallet-besu')
 const getWeb3 = require('../getWeb3.js')
 const fileDownload = require('js-file-download')
-const Web3 = require('web3')
+const {PrivateKey, createUserAuth, Client, Where, ThreadID} = require('@textile/hub')
+const fleekStorage = require('@fleekhq/fleek-storage-js')
+let fromUser
 
-let web3, id, deployedNetwork, contract,accounts,fromUser
-
-AWS.config.update({
-    region: 'ap-south-1',
-    accessKeyId: 'AKIAWRATGLMSHIMUKP6H',
-    secretAccessKey: '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'
-})
-let s3 = new AWS.S3();
-
-const init = async function() {
-
-    web3 = await getWeb3.default()
-    accounts = await web3.eth.getAccounts()
-    fromUser = accounts[0]
-    id = await web3.eth.net.getId()
-    deployedNetwork = MasterContract.networks[id]
-    contract = new web3.eth.Contract(
-        MasterContract.abi, deployedNetwork.address
-    )
-    return fromUser
+const keyInfo = {
+    key:'be645tj5wtjuginby3fwnqhe57y',
+    secret:'bcm7zjaxlipajgsm6qd6big7lv52cihf2whbbaji'
 }
 
-const registerUser = async function(name, email, privateKey){
-    try {
-        let publicKey = e2e.getPublicKey(privateKey)
-        publicKey = publicKey.toString("hex")
-        const receipt = await contract.methods.registerUser(
-            name, email, publicKey
-        ).send({
-            from: fromUser,
-            gas: 300000
-        })
+const threadDbId = [1, 85, 243, 59, 153, 95, 17, 179, 45, 75, 50, 151, 93, 179, 250, 124, 102,
+    28, 126, 156, 20, 70, 225, 244, 240, 2, 64, 85, 160, 242, 198, 180, 46, 56]
 
-        if (receipt.status)
-            return receipt.from
-        return null
+const fleekApiKey = "t8DYhMZ1ztjUtOFC8qEDqg=="
+const fleekApiSecret = "XwZyU7RZ3H2Z1QHhUdFdi4MJx8j1axJm2hEq1olRWeU="
+
+const init = async function() {
+    const web3 = await getWeb3.default()
+    const accounts = await web3.eth.getAccounts()
+    fromUser = accounts[0]
+    const identity = await generateIdentity()
+    const dbClient = await setThreadDb(identity)
+    return {
+        fromUser: fromUser,
+        client: dbClient,
+        identity: identity
+    }
+}
+
+const generateIdentity = async () => {
+    const seed = fromUser.substring(0,32)
+    console.log("seed:",seed)
+    const seedPhase = new Uint8Array(Buffer.from(seed))
+    const identity = PrivateKey.fromRawEd25519Seed(seedPhase)
+    console.log("identity generated!!",identity)
+    return identity
+}
+
+const setThreadDb = async (identity)=>{
+    const userAuth = await createUserAuth(keyInfo.key,keyInfo.secret)
+    const privateKey = await PrivateKey.fromString(identity.toString())
+    const dbClient = await Client.withUserAuth(userAuth)
+    const token = await dbClient.getToken(privateKey)
+    console.log("ThreadDB setup done!!!")
+    return dbClient
+}
+
+const storeFileFleek = async (fileName,encryptedData)=>{
+    return await fleekStorage.upload({
+        apiKey: fleekApiKey,
+        apiSecret: fleekApiSecret,
+        key: fileName,
+        data: encryptedData
+    })
+}
+
+const getFileFleek = async (fileName)=>{
+    const file = await fleekStorage.get({
+        apiKey: fleekApiKey,
+        apiSecret: fleekApiSecret,
+        key: fileName
+    })
+    return file.data
+}
+
+const registerUser = async function(name, email,password,identity,dbClient){
+    try {
+        const query = new Where('email').eq(email)
+        const threadId = ThreadID.fromBytes(threadDbId)
+        const result = await dbClient.find(threadId, 'RegisterUser', query)
+        if (result.length>0) {
+            console.log("Email exists!")
+            return false
+        }
+        const hashPass = e2e.calculateHash(password)
+        const data = {
+            name: name,
+            email: email,
+            password: hashPass,
+            publicKey: identity.public.toString(),
+            documentId: ["-1"]
+        }
+        const insertStatus = await insertData(dbClient,data,'RegisterUser')
+        console.log("User registration status:",insertStatus)
+        return insertStatus
     }catch(err){
         throw err
     }
 }
 
-const createWallet = async function(password){
-    return await wallet.create(password,"orion key1")
+const insertData = async (dbClient,data,schemaName) =>{
+    const threadId = ThreadID.fromBytes(threadDbId)
+    const insertStatus = await dbClient.create(threadId, schemaName, [data])
+    console.log("Insert Data status:",insertStatus)
+    return true
 }
 
-const getAllAccounts = async function(password){
-    return await wallet.login(password)
-}
-
-const loginUser = async function(privateKey){
+const loginUser = async function(email,password,identity,dbClient){
     try {
-        let publicKey = e2e.getPublicKey(privateKey)
-        publicKey = publicKey.toString("hex")
-        await contract.methods.updatePublicKey(publicKey).send({
-            from: fromUser,
-            gas: 3000000
-        })
-        return true
+        const hashPass = e2e.calculateHash(password)
+        const query = new Where('email').eq(email)
+        const threadId = ThreadID.fromBytes(threadDbId)
+        const result = await dbClient.find(threadId, 'RegisterUser', query)
+        console.log("RESULT:",result)
+        if (result.length<1){
+            console.log("Please register user!")
+            return null
+        }
+        if (result[0].password!==hashPass){
+            console.log("Wrong pass!!")
+            return null
+        }
+        return result[0]._id
     }catch (err) {
         throw err
     }
 }
 
-const getAllUsers = async function(loggedUser){
-    const registeredUsers = await contract.methods.getAllUsers().call({
-        from: fromUser
-    })
-    let caller
-    let userArray = []
-    for (let i = 0; i < registeredUsers.length; i++){
-        const result = await contract.methods.storeUser(registeredUsers[i]).call({
-            from: fromUser
-        });
-        if (loggedUser.toLowerCase()!==registeredUsers[i].toLowerCase()) {
-            const value = {
-                address: registeredUsers[i],
-                name: result.name,
-                key: result.publicKey,
-            }
-            userArray.push(value)
-        }else{
-            caller ={
-                address: registeredUsers[i],
-                name: result.name,
-                key: result.publicKey,
-            }
-        }
-    }
-    const userDetails = {
-        userArray:userArray,
-        caller:caller
-    }
-    return userDetails
+const getAllUsers = async function(dbClient,loggedUser){
+    console.log("Logg:",loggedUser)
+    const query = new Where('email').ne(loggedUser)
+    const threadId = ThreadID.fromBytes(threadDbId)
+    const registeredUsers = await dbClient.find(threadId, 'RegisterUser', query)
+    console.log("Registered user:",registeredUsers)
+    return registeredUsers
 }
 
-const storeFileAWS = function (awsKey, encryptedData){
-    return new Promise((resolve,reject) =>{
-        s3.putObject({
-            Bucket: 'secure-doc-test',
-            Key: awsKey,
-            Body: encryptedData
-        }, function (error, data) {
-            if (error != null) {
-                reject(false)
-            } else {
-                resolve(true)
-            }
-        })
-    })
-}
-
-const getFileAWS = function (key){
-    return new Promise((resolve,reject) =>{
-        s3.getObject({
-            Bucket: 'secure-doc-test',
-            Key: key
-        },function(error, data){
-            if (error != null) {
-                reject(error)
-            } else {
-                resolve(data.Body)
-            }
-        })
-    })
-}
-
-const uploadFile = async function(party, file, password, setSubmitting){
-
-    let encryptedKeys=[]
-    let userAddress=[]
-    const cipherKey = await e2e.generateCipherKey(password)
-    const fileSplit = file.name.split(".")
-    const fileFormat = fileSplit[fileSplit.length - 1]
+const uploadFile = async function(parties, file, setSubmitting, dbClient){
+    console.log("Uploading File!!!")
     let reader = new FileReader()
     reader.readAsArrayBuffer(file)
-
     reader.onload = async (val) => {
         const fileInput = new Uint8Array(val.target.result)
+        const cipherKey = await e2e.generateCipherKey("password")
         const encryptedFile = await e2e.encryptFile(Buffer.from(fileInput), cipherKey)
-
         const fileHash = e2e.calculateHash(fileInput)
-
-        for (let i=0;i<party.length;i++){
-            let aesEncKey = await e2e.encryptKey(Buffer.from(party[i].key,"hex"), cipherKey)
-            let storeKey = {
-                iv: aesEncKey.iv.toString("hex"),
-                ephemPublicKey: aesEncKey.ephemPublicKey.toString("hex"),
-                ciphertext: aesEncKey.ciphertext.toString("hex"),
-                mac: aesEncKey.mac.toString("hex")
+        let fileKey = fileHash.toString("hex").concat(".").concat("FLEEK")
+        const threadId = ThreadID.fromBytes(threadDbId)
+        let keys = []
+        for (let i=0; i<parties.length; i++){
+            const json ={
+                email: parties[i].email,
+                key : cipherKey.toString("hex")     //encrypted key for every party
             }
-            encryptedKeys.push(JSON.stringify(storeKey))
-            userAddress.push(party[i].address)
+            keys.push(json)
         }
-        const awsFileKey = fileHash.toString("hex").concat(".").concat(fileFormat)
+        await storeFileFleek(fileKey,encryptedFile)
+        const status = await dbClient.create(threadId, 'Document', [{
+            fileLocation: fileKey,
+            fileName: file.name,
+            key: keys
+        }])
 
-        storeFileAWS(awsFileKey, encryptedFile).then(()=>{
-            contract.methods.uploadDocument(
-                42,
-                fileHash.toString("hex"),
-                awsFileKey,
-                encryptedKeys,
-                userAddress
-            ).send({
-                from: fromUser,
-                gas:3000000
-            }).then((receipt)=>{setSubmitting(false)})
-        }).catch((err)=>{
-            console.log("ERROR: ",err)
-        })
-
+        for (let i=0; i<parties.length; i++){
+            const query = new Where('email').eq(parties[i].email)
+            const user = await dbClient.find(threadId, 'RegisterUser', query)
+            if (user[0].documentId.length===1 && user[0].documentId[0]==="-1"){
+                user[0].documentId = [status[0]]
+            }else {
+                user[0].documentId.push(status[0])
+            }
+            await dbClient.save(threadId,'RegisterUser',[user[0]])
+            console.log("Updated!!:")
+        }
+        console.log("File uploaded!!!")
+        setSubmitting(false)
     }
 }
 
-const getAllFile = async function(){
-    return await contract.methods.getAllDocIndex().call({
-        from: fromUser
-    })
+const getAllFile = async function(dbClient, loggedUser){
+    const threadId = ThreadID.fromBytes(threadDbId)
+    const query = new Where('email').eq(loggedUser)
+    const documents = await dbClient.find(threadId, 'RegisterUser', query)
+    console.log('Result:', documents)
+    return documents[0].documentId
 }
 
-const downloadFile = async function (docIndex,password){
-
-    let cipherKey = await contract.methods.getCipherKey(docIndex).call({
-        from: fromUser
-    })
-    cipherKey = JSON.parse(cipherKey)
-    const document = await contract.methods.getDocument(docIndex).call({
-        from: fromUser
-    })
-    let encryptedKey = {
-        iv: Buffer.from(cipherKey.iv,"hex"),
-        ephemPublicKey: Buffer.from(cipherKey.ephemPublicKey,"hex"),
-        ciphertext: Buffer.from(cipherKey.ciphertext,"hex"),
-        mac: Buffer.from(cipherKey.mac,"hex")
+const downloadFile = async function (docIndex, dbClient, loggedUser){
+    const threadId = ThreadID.fromBytes(threadDbId)
+    const documents = await dbClient.findByID(threadId, 'Document', docIndex)
+    const fileName = documents.fileName
+    const fileLocation = documents.fileLocation
+    const keys = documents.key
+    let cipherKey = null
+    for (let i=0;i<keys.length;i++){
+        if (keys[i].email===loggedUser){
+            cipherKey = Buffer.from(keys[i].key,"hex")
+            break;
+        }
     }
-
-    const privateKey = await wallet.login(password);
-    const decryptedKey = await e2e.decryptKey(privateKey[0],encryptedKey)
-    const documentHash = document.documentHash
-    const documentLocation = document.documentLocation
-
-    const fileSplit= documentLocation.split(".")
-    const fileFormat = fileSplit[fileSplit.length - 1]
-
-    return new Promise((resolve)=>{
-        getFileAWS(documentLocation).then((encryptedFile) =>{
-            e2e.decryptFile(encryptedFile, decryptedKey).then((decryptedFile)=>{
-                const hash2 = e2e.calculateHash(new  Uint8Array(decryptedFile)).toString("hex")
-                fileDownload(decryptedFile,"res2".concat(".").concat(fileFormat))
-                resolve(true)
-            })
-        })
-    })
-
+    const encryptedData = await getFileFleek(fileLocation)
+    const decryptedData = await e2e.decryptFile(encryptedData,cipherKey)
+    console.log("DecryptedFile:",decryptedData)
+    fileDownload(decryptedData,fileName)
+    return true
 }
 
 module.exports ={
     registerUser,
-    createWallet,
     loginUser,
-    getAllAccounts,
     getAllUsers,
     uploadFile,
     getAllFile,
