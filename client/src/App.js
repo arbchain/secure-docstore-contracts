@@ -7,6 +7,7 @@ import Profile from "./component/Profile";
 import Layout from "./component/Layout";
 import LoginForm from "./component/LoginForm";
 import SignUpForm from "./component/SignUpForm";
+import Database from "./component/Database";
 import 'semantic-ui-css/semantic.min.css'
 
 class App extends Component {
@@ -18,7 +19,7 @@ class App extends Component {
                 <Switch>
                     <Route exact path="/" component={SignUpForm}/>
                     <Route exact path="/login" component={LoginForm}/>
-                    {/*<Route path="/signup" component={SignUpForm}/>*/}
+                    <Route path="/db" component={Database}/>
 
                     <Layout>
                         <Route exact path="/dashboard" component={Dashboard}/>
